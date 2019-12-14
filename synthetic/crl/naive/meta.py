@@ -60,23 +60,37 @@ class MetaAgent(object):
             self.model_.cuda()
 
     def act(self, state, preference=None):
+        """How to sample an action to examine the learning
+        outcomes or explore the environment
+        """
+
         # random pick a preference if it is not specified
         if preference is None:
+            # w_kept here is presumably the kept weights
             if self.w_kept is None:
+                # if we don't have kept wegihts, randomize
                 self.w_kept = torch.randn(self.model_.reward_size)
+                # and then normalize (i think)
                 self.w_kept = (torch.abs(self.w_kept) / \
                                torch.norm(self.w_kept, p=1)).type(FloatTensor)
             preference = self.w_kept
 
+        # pull out the state into a format we want
         state = torch.from_numpy(state).type(FloatTensor)
 
+        # run our stuff through the model,
+        # which takes the state and a preference
         _, Q = self.model_(
+            # Q) not sure what unsqueeze here does
             Variable(state.unsqueeze(0), requires_grad=False),
             Variable(preference.unsqueeze(0), requires_grad=False))
 
+        # pull out the action based on the Q values
         action = Q.max(1)[1].data.cpu().numpy()
+        # action formatting
         action = int(action[0])
 
+        # if training, then do some more formatting of the action?
         if self.is_train and (len(self.trans_mem) < self.batch_size or \
                               torch.rand(1)[0] < self.epsilon):
             action = np.random.choice(self.model.action_size, 1)[0]
@@ -85,6 +99,11 @@ class MetaAgent(object):
         return action
 
     def memorize(self, state, action, next_state, reward, terminal, roi=False):
+        """(2) memorize: how to store observed observations in order to
+        help learing or establishing the empirical model of the
+        enviroment;
+        """
+
         self.trans_mem.append(self.trans(
             torch.from_numpy(state).type(FloatTensor),  # state
             action,  # action
@@ -199,6 +218,8 @@ class MetaAgent(object):
             actions = Variable(torch.cat(action_batch, dim=0))
 
             # Compute Huber loss
+            # Huber loss is like squared error, but doesn't punish outliers quite as much.
+            # https://en.wikipedia.org/wiki/Huber_loss
             loss = F.smooth_l1_loss(Q.gather(1, actions.unsqueeze(dim=1)), Tau_Q.unsqueeze(dim=1))
 
             self.optimizer.zero_grad()
