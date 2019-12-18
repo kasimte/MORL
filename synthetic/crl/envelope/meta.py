@@ -43,6 +43,8 @@ class MetaAgent(object):
 
         self.beta            = args.beta
         self.beta_init       = args.beta
+        # this is directly from the paper -- homotopy loss
+        # clearly identifies his new algorithm
         self.homotopy        = args.homotopy
         self.beta_uplim      = 1.00
         self.tau             = 1000.

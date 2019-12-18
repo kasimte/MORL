@@ -19,6 +19,8 @@
 #
 # python train.py --env-name dst --method crl-naive --model linear --gamma  0.99 --mem-size 4000 --batch-size 256 --lr  5e-4 --epsilon 0.5 --epsilon-decay --weight-num 32 --episode-num 2000 --optimizer Adam --save crl/naive/saved/ --log crl/naive/logs/ --update-freq 100 --name 5
 #
+#
+# Run evaluation on the control
 # python test/eval_dst.py --env-name dst --method crl-naive --model  linear --gamma  0.99 --save crl/naive/saved/ --pltcontrol --name 0
 # python test/eval_dst.py --env-name dst --method crl-naive --model  linear --gamma  0.99 --save crl/naive/saved/ --pltcontrol --name 1
 # python test/eval_dst.py --env-name dst --method crl-naive --model  linear --gamma  0.99 --save crl/naive/saved/ --pltcontrol --name 2
@@ -26,6 +28,7 @@
 # python test/eval_dst.py --env-name dst --method crl-naive --model  linear --gamma  0.99 --save crl/naive/saved/ --pltcontrol --name 4
 # python test/eval_dst.py --env-name dst --method crl-naive --model  linear --gamma  0.99 --save crl/naive/saved/ --pltcontrol --name 5
 #
+# Run evaluation on pareto
 # python test/eval_dst.py --env-name dst --method crl-naive --model  linear --gamma  0.99 --save crl/naive/saved/ --pltpareto  --name 0
 # python test/eval_dst.py --env-name dst --method crl-naive --model  linear --gamma  0.99 --save crl/naive/saved/ --pltpareto  --name 1
 # python test/eval_dst.py --env-name dst --method crl-naive --model  linear --gamma  0.99 --save crl/naive/saved/ --pltpareto  --name 2

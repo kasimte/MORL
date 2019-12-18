@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-
+# CQN, I assume refers to Conditioned Q-Network...
 class NaiveOnelayerCQN(torch.nn.Module):
     '''
         One-Layer Controllable Q-Network, Naive Version

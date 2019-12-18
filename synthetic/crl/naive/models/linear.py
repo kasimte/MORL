@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-
+# Linear Controllable Q-Network, Naive Version
 class NaiveLinearCQN(torch.nn.Module):
     '''
         Linear Controllable Q-Network, Naive Version
