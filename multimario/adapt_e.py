@@ -1,8 +1,11 @@
-## multi-obejcetive super mario bros
+# I assume this means "adaptation to envelope".
+
+## multi-objective super mario bros
 ## created by Runzhe Yang on Jan. 21, 2019
 
 # Yajie Zhou comments
 # EnvelopeMoActorAgent adaptation
+
 
 
 import gym

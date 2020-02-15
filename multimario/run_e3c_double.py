@@ -1,4 +1,6 @@
-## multi-obejcetive super mario bros
+# What is the difference between run e3c and run e3c double?
+
+## multi-objective super mario bros
 ## modified by Runzhe Yang on Dec. 18, 2018
 
 import gym
@@ -116,7 +118,7 @@ def make_train_data(args, reward, done, value, next_value, reward_size):
     return discounted_return
 
 
-# what is this doing? do we need this too?
+# Q. What is this doing? Do we need this too?
 # adv is used to calculated Actor_Loss in the agent/train
 def envelope_operator(args, preference, target, value, reward_size, g_step):
     '''
@@ -129,19 +131,31 @@ def envelope_operator(args, preference, target, value, reward_size, g_step):
     :param g_step: global_step = args.num_worker * args.num_step = 16 * 5
     :return: 'total_target, total_adv', and input them to the train()
     '''
-    # what is u1... utility???
+    
+    # Q. what is u1... utility??? This might be a question for Runzhe.
     # [w1, w1, w1, w1, w1, w1,    w2, w2, w2, w2, w2, w2...]
     # [s1, s2, s3, u1, u2, u3,    s1, s2, s3, u1, u2, u3...]
 
     # weak envelope calculation
+
+    # What is ofs?
     ofs = args.num_worker * args.num_step
+
+    # What does concatenate do?
     target = np.concatenate(target).reshape(-1, reward_size)
+
+    # If our step count is past where we have set it to start, then
+    # perform more edits on the target.
     if g_step > args.enve_start:
+        
         prod = np.inner(target, preference)
+
         # envelope_mask?
         envemask = prod.transpose().reshape(args.sample_size, -1, ofs).argmax(axis=1)
+
         envemask = envemask.reshape(-1) * ofs + np.array(list(range(ofs))*args.sample_size)
         target = target[envemask]
+
     # For Actor
     # Q = state Value function V(s) and the advantage value A(s, a)
     # adv = Q - state Value function V(s)
@@ -327,7 +341,10 @@ if __name__ == '__main__':
             # what is utility? no use
             total_moreward = np.array(total_moreward).transpose([1, 0, 2]).reshape([-1, reward_size])
             total_moreward = np.tile(total_moreward, (args.sample_size, 1))
+
+            # Question: Where is this total_utility used?
             total_utility = np.sum(total_moreward * total_update_w, axis=-1).reshape([-1])
+            
             # expand action batch
             total_action = np.stack(total_action).transpose().reshape([-1])
             total_action = np.tile(total_action, args.sample_size)

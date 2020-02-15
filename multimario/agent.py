@@ -78,6 +78,13 @@ class ActorAgent(object):
             target_batch,
             action_batch,
             adv_batch):
+
+        '''
+        Trains the model.
+        s_batch: state batch
+        next_s_batch: next state batch
+        adv_batch: advantage batch
+        '''
     
         with torch.no_grad():
             s_batch = torch.FloatTensor(s_batch).to(self.device)
