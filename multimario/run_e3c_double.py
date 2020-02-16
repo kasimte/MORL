@@ -47,8 +47,13 @@ parser.add_argument('--prev-model', default='SuperMarioBros-v3_2018-11-24.model'
 # running configuration
 parser.add_argument('--use-cuda', action='store_true',
                     help='use cuda (default FALSE)')
+
+# GAE: Generalized Advantage Estimation
+# See
+# http://www.breloff.com/DeepRL-OnlineGAE/
+# for a summary
 parser.add_argument('--use-gae', action='store_true',
-                    help='use gae (defualt FALSE)')
+                    help='use gae (default FALSE)')
 parser.add_argument('--life-done', action='store_true',
                     help='terminate when die')
 parser.add_argument('--single-stage', action='store_true',
@@ -98,32 +103,51 @@ parser.add_argument('--sample-size', type=int, default=8, metavar='SS',
 # what is done[t]? no df
 def make_train_data(args, reward, done, value, next_value, reward_size):
     '''
-    :param args:
-    :param reward: total_moreward
-    :param done:
-    :param value:
-    :param next_value:
-    :param reward_size:
-    :return: target given to envelope_operator
+    :param args: arguments
+    :param reward: total MORL reward
+
+    :param done: a vector indicating whether each transition is terminal 
+p
+    E.g., [0, 1, 1, 1, 0....]
+    0 --> means not terminal
+    1 --> means terminal
+
+    done[t] --> 0 or 1, indicating whether this time step is terminal
+
+    :param value: value vector
+    :param next_value: next value vector
+    :param reward_size: a number
+    :return: discounted_return target to give to envelope_operator
     '''
+
+    # Initialize a discounted_return numpy array of size
+    # number of steps, reward_size
     discounted_return = np.empty([args.num_step, reward_size])
 
     # Discounted Return
     if args.use_gae:
-        # what is gae, what is done?
-        # gae is gradient?
+        # Generalized Advantage Estimator
         gae = np.zeros(reward_size)
         for t in range(args.num_step - 1, -1, -1):
+            # reward at time step t +
+            # delta is the difference between what the model predicts and what the target model is predicting
             delta = reward[t] + args.gamma * next_value[t] * (1 - done[t]) - value[t]
             gae = delta + args.gamma * args.lam * (1 - done[t]) * gae
 
             discounted_return[t] = gae + value[t]
 
     else:
+        # Start with the last next value.
         running_add = next_value[-1]
+        # Iterate backwards in time over the number of steps.
         for t in range(args.num_step - 1, -1, -1):
+            # The running addition at each time step becomes the
+            # reward at that time step + a discounted figure of the
+            # running_add.
             running_add = reward[t] + args.gamma * running_add * (1 - done[t])
+            # Update the discounted return.
             discounted_return[t] = running_add
+
 
     return discounted_return
 
@@ -178,6 +202,14 @@ def envelope_operator(args, preference, target, value, reward_size, g_step):
 
 
 def generate_w(num_prefence, reward_size, fixed_w=None):
+    '''
+    Generates weight preferences, sampling from a distribution.
+    Later called as
+    
+    explore_w = generate_w(...
+
+    implying that these are exploratory weights.
+    '''
     if fixed_w is not None:
         w = np.random.randn(num_prefence-1, reward_size)
         # normalize as a simplex
@@ -197,34 +229,45 @@ def renew_w(preferences, dim):
 
 if __name__ == '__main__':
 
+    # Parse arguments from configuration.
     args = parser.parse_args()
 
-    # get enviroment information
-    env = JoypadSpace(
-        gym_super_mario_bros.make(args.env_id), SIMPLE_MOVEMENT)
+    # Get environment information.
+    env = JoypadSpace(gym_super_mario_bros.make(args.env_id), SIMPLE_MOVEMENT)
     input_size = env.observation_space.shape
     output_size = env.action_space.n
+
+    # Vectorized reward size, representing multiple objectives:
+    # [x-position, time, life, coins, enemy]
+    # as specified in the paper.
     reward_size = 5
 
+    # Close the environment.
     env.close()
 
-    # setup 
+    # Setup
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+    # tag is "test" or "training" depending on args.training
     tag = ["test", "train"][int(args.training)]
     log_dir = os.path.join(args.logdir, '{}_{}_{}_{}'.format(
         args.env_id, args.name, current_time, tag))
     writer = SummaryWriter(log_dir)
 
-    model_path = 'saved/{}_{}_{}.model'.format(args.env_id, 
-                    args.name, current_time)
+    model_path = 'saved/{}_{}_{}.model'.format(args.env_id, args.name, current_time)
     load_model_path = 'saved/{}'.format(args.prev_model)
 
+    # EnvelopeDoubleMORLActorAgent
+    #
+    # - Envelope MORL algorithm
+    # - Double model for stabilization
+    # - Actor in Actor Critic
     agent = EnveDoubleMoActorAgent(
         args,
         input_size,
         output_size,
         reward_size)
 
+    # Load the model, if applicable
     if args.load_model:
         if args.use_cuda:
             agent.model.load_state_dict(torch.load(load_model_path))
@@ -236,14 +279,39 @@ if __name__ == '__main__':
                     map_location='cpu'))
             agent.model_ = copy.deepcopy(agent.model)
 
+    # If testing, run evaluation.
+    # eval just prints out what the model looks like
     if not args.training:
         agent.model.eval()
         agent.model_.eval()
 
+    # Initialize array of multiple works for multiprocessing.
+    #
+    # Each work is a MoMarioEnv (MORL Mario Environment), as seen in
+    # the loop below. Each work will be spawned as a child process,
+    # passing data up towards its parent through a pipe.
     works = []
+
+    # Parent Connections
     parent_conns = []
+    # Child Connections
     child_conns = []
+
+    # Iterate over the number of workers.
     for idx in range(args.num_worker):
+
+        # Pipe is from torch.multiprocessing
+        #
+        # https://docs.python.org/3.5/library/multiprocessing.html#multiprocessing.Pipe
+
+        # When using multiple processes, one generally uses message
+        # passing for communication between processes and avoids
+        # having to use any synchronization primitives like locks.
+
+        # For passing messages one can use Pipe() (for a connection
+        # between two processes) or a queue (which allows multiple
+        # producers and consumers).
+        
         parent_conn, child_conn = Pipe()
         work = MoMarioEnv(args, idx, child_conn)
         work.start()
@@ -251,17 +319,24 @@ if __name__ == '__main__':
         parent_conns.append(parent_conn)
         child_conns.append(child_conn)
 
+    # Initialize states, being the an array of states (one state from each worker).
+    # Where does 4, 84, 84 come from here?
+    # Presumably that is the state shape for each worker.
     states = np.zeros([args.num_worker, 4, 84, 84])
 
     sample_episode = 0
+    # Sample Reward All
     sample_rall = 0
+    # Sample MORL Reward All
     sample_morall = 0
     sample_step = 0
     sample_env_idx = 0
     global_step = 0
     recent_prob = deque(maxlen=10)
 
+    # Fixed Weights
     fixed_w = np.array([0.20, 0.20, 0.20, 0.20, 0.20])
+    # 
     # fixed_w = np.array([0.00, 0.00, 0.00, 1.00, 0.00])
     # fixed_w = np.array([0.00, 0.00, 0.00, 0.00, 1.00])
     # fixed_w = np.array([1.00, 0.00, 0.00, 0.00, 0.00])
@@ -269,36 +344,64 @@ if __name__ == '__main__':
     # fixed_w = np.array([0.00, 0.00, 1.00, 0.00, 0.00])
     explore_w = generate_w(args.num_worker, reward_size, fixed_w)
 
+    # Not sure why this loop is necessary.
     while True:
         total_state, total_reward, total_done, total_next_state, total_action, total_moreward = [], [], [], [], [], []
         global_step += (args.num_worker * args.num_step)
 
+        # num_step - number of steps, defaults to 5
+        # This is done for GAE.
         for _ in range(args.num_step):
+
+            # Not sure why we delay here during testing, but okay.
             if not args.training:
                 time.sleep(0.05)
+
+            # The agent returns the actions based on states. I guess
+            # the agent is returning actions as a vector, indicating
+            # the agent is setup to handle multiple actors at once.
+
+            # states: [ worker 1 state, worker 2 state, ... worker n state ]
+            # explore_w: [ weights 1, weights 2, .. weights n ]
+            # returns:
+            # actions [ action 1, action 2, ... action n ]
             actions = agent.get_action(states, explore_w)
 
+            # Each worker represents an agent, so zip the
+            # multiprocessing connection with the access, and send
+            # down each action.
             for parent_conn, action in zip(parent_conns, actions):
                 parent_conn.send(action)
 
+            # Initialize arrays for data on the flip side.
+            #
+            # rewards and dones are for plotting, while real_dones and
+            # morewards are for the real environment.
             next_states, rewards, dones, real_dones, morewards, scores = [], [], [], [], [], []
             cnt = 0
+
+            # Iterate across workers
             for parent_conn in parent_conns:
+                # state, reward, done, real dones, morl reward, scores
                 s, r, d, rd, mor, sc = parent_conn.recv()
                 next_states.append(s)
-                # why dot the fixed_w here?
-                # is here should be explore_w??
                 rewards.append(fixed_w.dot(mor))
                 dones.append(d)
                 real_dones.append(rd)
                 morewards.append(mor)
                 scores.append(sc)
-                # resample if done
+                # Resample if done
+                #
+                # (Kasim) What is interesting here is weights are
+                # renewed if it is done for any connection.
+                #
                 if cnt > 0 and d:
                     explore_w = renew_w(explore_w, cnt)
                 cnt += 1
 
+            # Stack data appropriately before appending to totals.
             next_states = np.stack(next_states)
+            # reward_scale is a hyperparameter that defaults to 1
             rewards = np.hstack(rewards) * args.reward_scale
             dones = np.hstack(dones)
             real_dones = np.hstack(real_dones)
@@ -311,8 +414,10 @@ if __name__ == '__main__':
             total_action.append(actions)
             total_moreward.append(morewards)
 
+            # Why is it 4 here?
             states = next_states[:, :, :, :]
 
+            # Sampling, presumably for plotting.
             sample_rall += rewards[sample_env_idx]
             sample_morall = sample_morall + morewards[sample_env_idx]
             sample_step += 1
@@ -332,13 +437,17 @@ if __name__ == '__main__':
                 sample_step = 0
                 sample_morall = 0
 
+        # If training, learn the model
         if args.training:
             # reward size is 5,
             # [w1, w1, w1, w1, w1, w1, w2, w2, w2, w2, w2, w2...]
             # [s1, s2, s3, u1, u2, u3, s1, s2, s3, u1, u2, u3...]
             # expand w batch
+            # First generate some random weights
             update_w = generate_w(args.sample_size, reward_size, fixed_w)
+            # Then expand that to total by repeating it, resulting in the data structure above.
             total_update_w = update_w.repeat(args.num_step*args.num_worker, axis=0)
+            
             # expand state batch
             # WRONG!!! total_state = total_state * args.sample_size
             total_state = np.stack(total_state).transpose(
@@ -365,8 +474,10 @@ if __name__ == '__main__':
             total_done = np.stack(total_done).transpose().reshape([-1])
             total_done = np.tile(total_done, args.sample_size)
 
-            value, next_value, policy = agent.forward_transition(
-                total_state, total_next_state, total_update_w)
+            
+            # forward_transition calculates
+            # value, next_value, and policy, based on batches of state, next state, and update weights
+            value, next_value, policy = agent.forward_transition(total_state, total_next_state, total_update_w)
 
             # logging utput to see how convergent it is.
             policy = policy.detach()
@@ -380,6 +491,8 @@ if __name__ == '__main__':
             total_adv = []
             total_target =[]
 
+            # this loops makes a batch of target and advantage
+            # training data based on the sample size
             for idw in range(args.sample_size):
                 ofs = args.num_worker * args.num_step
                 for idx in range(args.num_worker):
@@ -393,9 +506,13 @@ if __name__ == '__main__':
 
             print(total_target, "--------before envelope----------")
 
+            # the envelope operator then calculates batches of target
+            # and advantage data based on the above
             total_target, total_adv = envelope_operator(args, update_w, total_target, value, reward_size, global_step)
             print(total_target, "--------after envelope----------")
 
+            # finally, we can train the model with batches of the
+            # following
             agent.train_model(
                 total_state,
                 total_next_state,
@@ -413,8 +530,10 @@ if __name__ == '__main__':
                     writer.add_scalar(
                         'data/lr', new_learing_rate, sample_episode)
 
+            # saving
             if global_step % (args.num_worker * args.num_step * 100) == 0:
                 torch.save(agent.model.state_dict(), model_path)
 
+            # syncing
             if global_step % args.update_target_critic == 0:
                 agent.sync()

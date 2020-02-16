@@ -18,6 +18,9 @@ from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 
 
 class MoMarioEnv(Process):
+    '''
+    MORL Mario Environment, written as a Process for multiprocessing.
+    '''
     def __init__(
             self,
             args,

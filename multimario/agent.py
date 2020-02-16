@@ -427,6 +427,9 @@ class EnveMoActorAgent(object):
 
 
 class EnveDoubleMoActorAgent(object):
+    '''
+    Envelope Double MORL Actor Agent
+    '''
     def __init__(
             self,
             args,
@@ -445,6 +448,8 @@ class EnveDoubleMoActorAgent(object):
         self.training = args.training
         self.optimizer = optim.Adam(
             self.model.parameters(), lr=args.learning_rate)
+        # standardization
+        # help='load previous model (default FALSE)')        
         self.standardization = args.standardization
         # tempreture for action generation
         self.T = args.T
@@ -506,6 +511,9 @@ class EnveDoubleMoActorAgent(object):
 
     # what is this doing??
     def anneal(self):
+        '''
+        Iteratively call to decrease the temperature setting over time.
+        '''
         self.T = 0.01+0.99*self.T
 
     def find_preference(
@@ -546,6 +554,17 @@ class EnveDoubleMoActorAgent(object):
             target_batch,
             action_batch,
             adv_batch):
+
+        '''The agent updates the model parameters based on supplied training
+        data, in batches.
+
+        state batch
+        next state batch
+        weight batch
+        target batch
+        action batch
+        advantage batch
+        '''
     
         with torch.no_grad():
             s_batch = torch.FloatTensor(s_batch).to(self.device)
